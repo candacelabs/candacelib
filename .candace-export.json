@@ -1,0 +1,9 @@
+{
+  "destination_repository": "candacelabs/candacelib",
+  "managed_by": "candace-component-export",
+  "schema_version": 2,
+  "source_path": "go/candacelib",
+  "source_repository": "kaashmonee/candace-server",
+  "source_revision": "4bbae8aa45d617a8db10f059f5376cc1dc282447",
+  "source_tree_oid": "dc9fdd3f00bbac1c7f0b9146b7f2faf9c684eb59"
+}
