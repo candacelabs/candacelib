@@ -41,11 +41,14 @@ protoc \
   "--go_out=module=github.com/candacelabs/candacelib:${output_root}" \
   "--plugin=protoc-gen-liquidproto=${plugin_dir}/protoc-gen-liquidproto" \
   "--liquidproto_out=module=github.com/candacelabs/candacelib:${output_root}" \
+  boundedbuffer/v1/buffer.proto \
   cron/v1/cron.proto
 
 if [[ "${mode}" == check ]]; then
   generated_files=(
     liquidproto/v1/refinement.pb.go
+    boundedbuffer/v1/buffer.pb.go
+    boundedbuffer/v1/buffer_liquid.pb.go
     cron/v1/cron.pb.go
     cron/v1/cron_liquid.pb.go
   )

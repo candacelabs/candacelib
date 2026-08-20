@@ -21,6 +21,7 @@ var _ = Describe("Compile", func() {
 			Expect(program.Expr).To(Equal(want))
 		},
 		Entry("bounded int", protoreflect.Int32Kind, "this >= 0 && this < 150", "v >= 0 && v < 150"),
+		Entry("enum values", protoreflect.EnumKind, "this == 1 || this == 2", "v == 1 || v == 2"),
 		Entry("string length", protoreflect.StringKind, "len(this) >= 1", "len(v) >= 1"),
 		Entry("bytes length", protoreflect.BytesKind, "len(this) == 32", "len(v) == 32"),
 		Entry("boolean", protoreflect.BoolKind, "!this || this", "!v || v"),

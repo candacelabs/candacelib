@@ -26,6 +26,20 @@ import (
 See the [cron package README](./cron/README.md) for lifecycle, persistence,
 catch-up, overlap, and idempotency guidance.
 
+## Redaction
+
+The [`redact`](./redact) package builds an immutable exact-value policy for
+text headed to logs or operator diagnostics. Callers declare the sensitive
+values; the redactor also covers their URL-userinfo-escaped spellings and
+matches longer overlapping values first.
+
+```go
+import "github.com/candacelabs/candacelib/redact"
+
+redactor := redact.NewRedactor(databasePassword, agentToken)
+diagnostic := redactor.String(err.Error())
+```
+
 ## Liquid Proto
 
 Liquid Proto's [`liquidproto` runtime](./liquidproto),
@@ -50,8 +64,10 @@ go install github.com/candacelabs/candacelib/cmd/protoc-gen-liquidproto@latest
 ```
 
 Schemas can import `liquidproto/v1/refinement.proto` and annotate singular
-scalar fields with `(candace.liquid.v1.field)`. The generator emits a
-`Validate<Message>` function for every message with annotated fields.
+scalar or enum fields with `expr`, or string-keyed scalar maps with
+`map_key_expr` and `map_value_expr`, under `(candace.liquid.v1.field)`. The
+generator emits a `Validate<Message>` function for every message with annotated
+fields and validates map entries in deterministic key order.
 
 ## License
 

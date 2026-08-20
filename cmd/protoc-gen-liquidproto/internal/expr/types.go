@@ -52,13 +52,16 @@ var (
 	typeUntypedInt = Type{Kind: KindUntypedInt}
 )
 
-// FromProtoKind maps a singular protobuf scalar kind to protoc-gen-go's Go
-// type. Non-scalar kinds cannot be refined.
+// FromProtoKind maps a singular protobuf scalar or enum kind to the Go type
+// used to type-check its refinement predicate. Proto enums have an int32 wire
+// representation and compare directly with untyped integer constants in Go.
 func FromProtoKind(kind protoreflect.Kind) (Type, bool) {
 	switch kind {
 	case protoreflect.BoolKind:
 		return typeBool, true
 	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind:
+		return Type{Kind: KindInt, Go: "int32", Bits: 32}, true
+	case protoreflect.EnumKind:
 		return Type{Kind: KindInt, Go: "int32", Bits: 32}, true
 	case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
 		return Type{Kind: KindInt, Go: "int64", Bits: 64}, true

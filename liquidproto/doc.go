@@ -3,5 +3,5 @@
 //
 // Refinement predicates are compiled into generated Go. This package does not
 // interpret predicates at run time. Generated Validate<Message> functions
-// enforce scalar refinements at serialization and service boundaries.
+// enforce scalar and enum refinements at serialization and service boundaries.
 package liquidproto

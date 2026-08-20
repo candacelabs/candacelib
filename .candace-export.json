@@ -4,6 +4,6 @@
   "schema_version": 2,
   "source_path": "go/candacelib",
   "source_repository": "kaashmonee/candace-server",
-  "source_revision": "35061dfb640fb8c43c5e24c91d5bd01e70fd38ee",
-  "source_tree_oid": "093d641be2ddb1ab1ba17ace4c466af31207b882"
+  "source_revision": "6ddd06ea311f1f206920d1ad210835d2ffdf0946",
+  "source_tree_oid": "66c755847440f98a8eb9431a38f959280248f828"
 }

@@ -9,6 +9,7 @@ import (
 	liquidv1 "github.com/candacelabs/candacelib/liquidproto/v1"
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/gofeaturespb"
 )
@@ -19,11 +20,14 @@ var (
 	runtimePackage = protogen.GoImportPath("github.com/candacelabs/candacelib/liquidproto")
 	regexpPackage  = protogen.GoImportPath("regexp")
 	fmtPackage     = protogen.GoImportPath("fmt")
+	sortPackage    = protogen.GoImportPath("sort")
 )
 
 type validatedField struct {
-	field   *protogen.Field
-	program *expr.Program
+	field           *protogen.Field
+	program         *expr.Program
+	mapKeyProgram   *expr.Program
+	mapValueProgram *expr.Program
 }
 
 type validatedMessage struct {
@@ -58,7 +62,7 @@ func Run(plugin *protogen.Plugin) error {
 
 func collect(file *protogen.File) ([]validatedMessage, error) {
 	var output []validatedMessage
-	var walk func([]*protogen.Message) error
+	var walk func(messages []*protogen.Message) error
 	walk = func(messages []*protogen.Message) error {
 		for _, message := range messages {
 			if message.Desc.IsMapEntry() {
@@ -105,8 +109,14 @@ func compileField(
 	field *protogen.Field,
 	annotation *liquidv1.FieldRefinement,
 ) (validatedField, error) {
-	if field.Desc.IsList() || field.Desc.IsMap() {
-		return validatedField{}, fieldErrf(field, "repeated and map fields cannot be refined")
+	if field.Desc.IsMap() {
+		return compileMapField(message, field, annotation)
+	}
+	if annotation.GetMapKeyExpr() != "" || annotation.GetMapValueExpr() != "" {
+		return validatedField{}, fieldErrf(field, "map entry predicates require a map field")
+	}
+	if field.Desc.IsList() {
+		return validatedField{}, fieldErrf(field, "repeated fields cannot be refined")
 	}
 	base, ok := expr.FromProtoKind(field.Desc.Kind())
 	if !ok {
@@ -131,6 +141,54 @@ func compileField(
 		return validatedField{}, fieldErrf(field, "%v", err)
 	}
 	return validatedField{field: field, program: program}, nil
+}
+
+func compileMapField(
+	message *protogen.Message,
+	field *protogen.Field,
+	annotation *liquidv1.FieldRefinement,
+) (validatedField, error) {
+	if annotation.GetExpr() != "" {
+		return validatedField{}, fieldErrf(field, "map refinements use map_key_expr and map_value_expr")
+	}
+	if annotation.GetMapKeyExpr() == "" && annotation.GetMapValueExpr() == "" {
+		return validatedField{}, fieldErrf(field, "map refinement has no key or value predicate")
+	}
+	if field.Desc.MapKey().Kind() != protoreflect.StringKind {
+		return validatedField{}, fieldErrf(field, "map refinements require string keys")
+	}
+	valueType, ok := expr.FromProtoKind(field.Desc.MapValue().Kind())
+	if !ok {
+		return validatedField{}, fieldErrf(field, "%s map values cannot be refined", field.Desc.MapValue().Kind())
+	}
+
+	prefix := "_liquid" + message.GoIdent.GoName + field.GoName
+	validated := validatedField{field: field}
+	var err error
+	if annotation.GetMapKeyExpr() != "" {
+		keyType, _ := expr.FromProtoKind(field.Desc.MapKey().Kind())
+		validated.mapKeyProgram, err = expr.Compile(
+			annotation.GetMapKeyExpr(),
+			keyType,
+			prefix+"Key",
+			prefix+"KeyRe",
+		)
+		if err != nil {
+			return validatedField{}, fieldErrf(field, "map key: %v", err)
+		}
+	}
+	if annotation.GetMapValueExpr() != "" {
+		validated.mapValueProgram, err = expr.Compile(
+			annotation.GetMapValueExpr(),
+			valueType,
+			prefix+"Value",
+			prefix+"ValueRe",
+		)
+		if err != nil {
+			return validatedField{}, fieldErrf(field, "map value: %v", err)
+		}
+	}
+	return validated, nil
 }
 
 func rejectExtensions(extensions []*protogen.Field) error {
@@ -198,7 +256,11 @@ func emitRegexps(generated *protogen.GeneratedFile, messages []validatedMessage)
 	var regexps []expr.Regexp
 	for _, message := range messages {
 		for _, field := range message.fields {
-			regexps = append(regexps, field.program.Regexps...)
+			for _, program := range []*expr.Program{field.program, field.mapKeyProgram, field.mapValueProgram} {
+				if program != nil {
+					regexps = append(regexps, program.Regexps...)
+				}
+			}
 		}
 	}
 	if len(regexps) == 0 {
@@ -228,18 +290,54 @@ func emitValidator(generated *protogen.GeneratedFile, validated validatedMessage
 	generated.P("return ", generated.QualifiedGoIdent(fmtPackage.Ident("Errorf")), "(\"Validate", name, ": nil *", name, "\")")
 	generated.P("}")
 	for _, validatedField := range validated.fields {
+		if validatedField.field.Desc.IsMap() {
+			emitMapValidation(generated, message, validatedField)
+			continue
+		}
 		field := validatedField.field
 		program := validatedField.program
-		generated.P("if !(", program.Expr, ") {")
-		generated.P("return &", generated.QualifiedGoIdent(runtimePackage.Ident("Error")), "{")
-		generated.P("Message: ", strconv.Quote(string(message.Desc.FullName())), ",")
-		generated.P("Field: ", strconv.Quote(string(field.Desc.Name())), ",")
-		generated.P("Predicate: ", strconv.Quote(program.Source), ",")
-		generated.P("Value: message.", field.GoName, ",")
-		generated.P("}")
-		generated.P("}")
+		emitPredicate(generated, message, field, program, "message."+field.GoName)
 	}
 	generated.P("return nil")
 	generated.P("}")
 	generated.P()
+}
+
+func emitMapValidation(generated *protogen.GeneratedFile, message *protogen.Message, validated validatedField) {
+	field := validated.field
+	prefix := "_liquid" + message.GoIdent.GoName + field.GoName
+	keysName := prefix + "Keys"
+	keyName := prefix + "Key"
+	valueName := prefix + "Value"
+	generated.P(keysName, " := make([]string, 0, len(message.", field.GoName, "))")
+	generated.P("for ", keyName, " := range message.", field.GoName, " {")
+	generated.P(keysName, " = append(", keysName, ", ", keyName, ")")
+	generated.P("}")
+	generated.P(generated.QualifiedGoIdent(sortPackage.Ident("Strings")), "(", keysName, ")")
+	generated.P("for _, ", keyName, " := range ", keysName, " {")
+	generated.P(valueName, " := message.", field.GoName, "[", keyName, "]")
+	if validated.mapKeyProgram != nil {
+		emitPredicate(generated, message, field, validated.mapKeyProgram, keyName)
+	}
+	if validated.mapValueProgram != nil {
+		emitPredicate(generated, message, field, validated.mapValueProgram, valueName)
+	}
+	generated.P("}")
+}
+
+func emitPredicate(
+	generated *protogen.GeneratedFile,
+	message *protogen.Message,
+	field *protogen.Field,
+	program *expr.Program,
+	value string,
+) {
+	generated.P("if !(", program.Expr, ") {")
+	generated.P("return &", generated.QualifiedGoIdent(runtimePackage.Ident("Error")), "{")
+	generated.P("Message: ", strconv.Quote(string(message.Desc.FullName())), ",")
+	generated.P("Field: ", strconv.Quote(string(field.Desc.Name())), ",")
+	generated.P("Predicate: ", strconv.Quote(program.Source), ",")
+	generated.P("Value: ", value, ",")
+	generated.P("}")
+	generated.P("}")
 }

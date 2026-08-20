@@ -27,12 +27,17 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// FieldRefinement attaches a predicate to a singular protobuf scalar.
+// FieldRefinement attaches predicates to a singular protobuf scalar or enum,
+// or independently to the keys and values of a string-keyed scalar map.
 type FieldRefinement struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Boolean expression over `this`, using comparisons, &&, ||, !, len(), and
 	// matches().
-	Expr          string `protobuf:"bytes,1,opt,name=expr,proto3" json:"expr,omitempty"`
+	Expr string `protobuf:"bytes,1,opt,name=expr,proto3" json:"expr,omitempty"`
+	// Boolean expression applied to every key in a string-keyed scalar map.
+	MapKeyExpr string `protobuf:"bytes,2,opt,name=map_key_expr,json=mapKeyExpr,proto3" json:"map_key_expr,omitempty"`
+	// Boolean expression applied to every value in a string-keyed scalar map.
+	MapValueExpr  string `protobuf:"bytes,3,opt,name=map_value_expr,json=mapValueExpr,proto3" json:"map_value_expr,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -74,6 +79,20 @@ func (x *FieldRefinement) GetExpr() string {
 	return ""
 }
 
+func (x *FieldRefinement) GetMapKeyExpr() string {
+	if x != nil {
+		return x.MapKeyExpr
+	}
+	return ""
+}
+
+func (x *FieldRefinement) GetMapValueExpr() string {
+	if x != nil {
+		return x.MapValueExpr
+	}
+	return ""
+}
+
 var file_liquidproto_v1_refinement_proto_extTypes = []protoimpl.ExtensionInfo{
 	{
 		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
@@ -99,9 +118,12 @@ var File_liquidproto_v1_refinement_proto protoreflect.FileDescriptor
 
 const file_liquidproto_v1_refinement_proto_rawDesc = "" +
 	"\n" +
-	"\x1fliquidproto/v1/refinement.proto\x12\x11candace.liquid.v1\x1a google/protobuf/descriptor.proto\"%\n" +
+	"\x1fliquidproto/v1/refinement.proto\x12\x11candace.liquid.v1\x1a google/protobuf/descriptor.proto\"m\n" +
 	"\x0fFieldRefinement\x12\x12\n" +
-	"\x04expr\x18\x01 \x01(\tR\x04expr:Y\n" +
+	"\x04expr\x18\x01 \x01(\tR\x04expr\x12 \n" +
+	"\fmap_key_expr\x18\x02 \x01(\tR\n" +
+	"mapKeyExpr\x12$\n" +
+	"\x0emap_value_expr\x18\x03 \x01(\tR\fmapValueExpr:Y\n" +
 	"\x05field\x12\x1d.google.protobuf.FieldOptions\x18\xa2\x90\x03 \x01(\v2\".candace.liquid.v1.FieldRefinementR\x05fieldB;Z9github.com/candacelabs/candacelib/liquidproto/v1;liquidv1b\x06proto3"
 
 var (
